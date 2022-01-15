@@ -16,13 +16,14 @@ void mainLoop()
 			// debug("Zmieniam stan na wysyłanie");
 			changeState( InSend );
 			//changeTallow( -perc); // ????????
-			pkt->ts = clk + 1;
 			sleep( SEC_IN_STATE); // to nam zasymuluje, że wiadomość trochę leci w kanale
 										// bez tego algorytm formalnie błędny za każdym razem dawałby poprawny wynik
 			for (int i = 0; i < size; i++)
 			{
 				if(rank == i)
 					continue;
+
+				pkt->ts = clk + 1;
 				sendPacket(pkt, i ,TALLOWTRANSPORT);
 			}
 			changeState( InRun );
