@@ -16,7 +16,8 @@ void *startMonitor(void *ptr)
 	char *res;
 	while ( stan!=InFinish ) {
 	// debug("sobie monitoruję");
-	// 	res= fgets( instring, 99, stdin);
+	// 	res= fgets( instring, 99, stdin);admin
+	
 	// 	if (res == 0) continue; 
 	// 	newline = strcspn(instring, "\n");
 	// 	if (newline<2) continue;

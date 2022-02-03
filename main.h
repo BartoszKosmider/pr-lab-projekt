@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdbool.h>
+
 /* odkomentować, jeżeli się chce DEBUGI */
 //#define DEBUG 
 /* boolean */
@@ -22,15 +24,18 @@
 #define ROOT 0
 
 /* stany procesu */
-typedef enum {InRun, InMonitor, InSend, InFinish} state_t;
+typedef enum {InRun, InSend, InFinish, InWait, InSection, InEnd} state_t;
 extern state_t stan;
-typedef enum { GET_DESKS, GET_R00M } action_t;
+typedef enum { EXIT, GET_DESKS, GET_R00M, GET_FIELD, SKIP, END } action_t;
 extern action_t actionType;
 extern int rank;
 extern int size;
 extern int clk;
-extern int deskCount;
+extern int maxDesksCount;
+extern int maxRoomsCount;
+extern int maxFieldsCount;
 extern int groupSize;
+extern bool finishProcess;
 
 /* Ile mamy łoju na składzie? */
 extern int tallow;
@@ -47,19 +52,19 @@ typedef struct {
     int src;      /* pole nie przesyłane, ale ustawiane w main_loop */
     action_t actionType;
     int groupSize;     /* przykładowe pole z danymi; można zmienić nazwę na bardziej pasującą */
+	int priority;
 } packet_t;
 
-extern packet_t deskQueue[4];
+extern packet_t queue[4];
+extern packet_t endQueue[4];
 
 extern MPI_Datatype MPI_PAKIET_T;
 
 /* Typy wiadomości */
-#define FINISH 1
-#define TALLOWTRANSPORT 2
-#define INRUN 3
-#define INMONITOR 4
-#define GIVEMESTATE 5
-#define STATE 6
+#define FINISH 0
+#define REQ 1
+#define RES 2
+#define REL 3
 
 /* macro debug - działa jak printf, kiedy zdefiniowano
    DEBUG, kiedy DEBUG niezdefiniowane działa jak instrukcja pusta 
@@ -80,7 +85,7 @@ extern MPI_Datatype MPI_PAKIET_T;
                                             
 */
 #ifdef DEBUG
-#define debug(FORMAT,...) printf("%c[%d;%dm [%d]: " FORMAT "%c[%d;%dm\n",  27, (1+(rank/7))%2, 31+(6+rank)%7, rank, ##__VA_ARGS__, 27,0,37);
+#define debug(FORMAT,...) printf("%c[%d;%dm [%d | %d]: " FORMAT "%c[%d;%dm\n",  27, (1+(rank/7))%2, 31+(6+rank)%7, rank, clk, ##__VA_ARGS__, 27,0,37);
 #else
 #define debug(...) ;
 #endif
@@ -100,8 +105,17 @@ extern MPI_Datatype MPI_PAKIET_T;
 
 /* wysyłanie pakietu, skrót: wskaźnik do pakietu (0 oznacza stwórz pusty pakiet), do kogo, z jakim typem */
 void sendPacket(packet_t *pkt, int destination, int tag);
+void setPriority();
+void removeFromQueue(packet_t rcvPacket);
 void changeState( state_t );
-void setLamportClk(int rcvClock);
 void insertToQueue(packet_t rcvPacket);
-void changeTallow( int );
+void insertToQueue2(packet_t rcvPacket);
+void insertToEndQueue(packet_t rcvPacket);
+void manageCriticalSection(int maxSize);
+void changeClock(int);
+void incrementClock(int destination);
+void insertInitialPackage();
+void insertFinishPackage();
+void setActionState(action_t newState);
+char* getActionName(action_t action);
 #endif

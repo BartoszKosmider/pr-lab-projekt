@@ -7,46 +7,38 @@ void *startKomWatek(void *ptr)
 	MPI_Status status;
 	int is_message = FALSE;
 	packet_t pakiet;
+	packet_t *pkt = malloc(sizeof(packet_t));
+
 	/* Obrazuje pętlę odbierającą pakiety o różnych typach */
-	while ( stan!=InFinish ) {
-		debug("czekam na recv");
+	while ( stan!=InFinish ) 
+	{
 		MPI_Recv( &pakiet, 1, MPI_PAKIET_T, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-		switch ( status.MPI_TAG ) {
+		changeClock(pakiet.ts);
+		switch ( status.MPI_TAG ) 
+		{
 			case FINISH: 
-				changeState(InFinish);
+				// insertToEndQueue(pakiet);
 				break;
-			case TALLOWTRANSPORT: 
-				//changeTallow( pakiet.groupSize);
-				// debug("Dostałem wiadomość od %d z danymi %d, akcja nr: %d",pakiet.src, pakiet.groupSize, pakiet.actionType);
-
-				setLamportClk(pakiet.ts);
-
+			case RES:
+				debug("odbieram odpowiedź od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
 				insertToQueue(pakiet);
-
 				break;
-			// case GIVEMESTATE: 
-			// 	pakiet.groupSize = tallow;
-			// 	sendPacket(&pakiet, ROOT, STATE);
-			// 	debug("Wysyłam mój stan do monitora: %d funtów łoju na składzie!", tallow);
-			// 	break;
-			// case STATE:
-			// 	numberReceived++;
-			// 	globalState += pakiet.groupSize;
-			// 	if (numberReceived > size-1) {
-			// 		debug("W magazynach mamy %d funtów łoju.", globalState);
-			// 	} 
-			// 	break;
-			// case INMONITOR: 
-			// 	changeState( InMonitor );
-			// 	debug("Od tej chwili czekam na polecenia od monitora");
-			// 	break;
-			// case INRUN: 
-			// 	changeState( InRun );
-			// 	debug("Od tej chwili decyzję podejmuję autonomicznie i losowo");
-			// 	break;
+			case REQ:
+				debug("odbieram żądanie od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
+				insertToQueue2(pakiet);
+				sendPacket(pkt, pakiet.src, RES);
+				break;
+			case REL:
+				debug("odbieram zwolnienie zasobu od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
+				removeFromQueue(pakiet);
+				break;
 			default:
 				break;
+
+			sleep(1);
 		}
 	}
 }
