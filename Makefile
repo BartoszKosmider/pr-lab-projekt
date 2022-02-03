@@ -13,4 +13,6 @@ clean:
 	rm main
 
 run: main
-	mpirun -default-hostfile none --oversubscribe -np 4 ./main
+	mpirun -np 4 ./main 
+	#mpirun -default-hostfile none --oversubscribe -np 4 ./main
+#aby dzialało na debianie to podmienić, nie mam pojecia co to robi
