@@ -16,23 +16,27 @@ void *startKomWatek(void *ptr)
 		changeClock(pakiet.ts);
 		switch ( status.MPI_TAG ) 
 		{
-			case FINISH: 
-				// insertToEndQueue(pakiet);
+			case FINISH:
+				// debug("odbieram odpowiedź FINISH od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					// pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
+
+				incrementEndCounter();
 				break;
 			case RES:
-				debug("odbieram odpowiedź od %d. rozmiar: %d, akcja: %s, clk: %d", 
-					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
-				insertToQueue(pakiet);
+				// debug("odbieram odpowiedź od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					// pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
+				insertToQueueOnRes(pakiet);
 				break;
 			case REQ:
-				debug("odbieram żądanie od %d. rozmiar: %d, akcja: %s, clk: %d", 
-					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
-				insertToQueue2(pakiet);
+				// debug("odbieram żądanie od %d. rozmiar: %d, akcja: %s, clk: %d", 
+					// pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
+				insertToQueueOnReq(pakiet);
 				sendPacket(pkt, pakiet.src, RES);
+				// debug("wysyłam odpowiedź do %d. Typ: %s",pakiet.src, getActionName(actionType));
 				break;
 			case REL:
-				debug("odbieram zwolnienie zasobu od %d. rozmiar: %d, akcja: %s, clk: %d", 
-					pakiet.src, pakiet.groupSize, getActionName(actionType), pakiet.ts);
+				// debug("odbieram zwolnienie zasobu od %d. rozmiar: %d, akcja: %s, clk: %d", 
+				// 	pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
 				removeFromQueue(pakiet);
 				break;
 			default:

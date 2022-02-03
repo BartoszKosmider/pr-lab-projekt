@@ -11,79 +11,45 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-/* odkomentować, jeżeli się chce DEBUGI */
-//#define DEBUG 
-/* boolean */
 #define TRUE 1
 #define FALSE 0
-
-/* używane w wątku głównym, determinuje jak często i na jak długo zmieniają się stany */
-#define STATE_CHANGE_PROB 50
-#define SEC_IN_STATE 2
-
-#define ROOT 0
-
 /* stany procesu */
 typedef enum {InRun, InSend, InFinish, InWait, InSection, InEnd} state_t;
 extern state_t stan;
-typedef enum { EXIT, GET_DESKS, GET_R00M, GET_FIELD, SKIP, END } action_t;
+// typy akcji
+typedef enum { GET_DESKS, GET_R00M, GET_FIELD, SKIP, END } action_t;
 extern action_t actionType;
-extern int rank;
-extern int size;
-extern int clk;
+extern int rank; //id procesu
+extern int size; //liczba procesów
+extern int clk; // zegar
+extern int priority;
 extern int maxDesksCount;
 extern int maxRoomsCount;
 extern int maxFieldsCount;
 extern int groupSize;
 extern bool finishProcess;
 
-/* Ile mamy łoju na składzie? */
-extern int tallow;
-
-/* stan globalny wykryty przez monitor */
-extern int globalState;
-/* ilu już odpowiedziało na GIVEMESTATE */
-extern int numberReceived;
-
-
-/* to może przeniesiemy do global... */
 typedef struct {
-    int ts;       /* timestamp (zegar lamporta */
-    int src;      /* pole nie przesyłane, ale ustawiane w main_loop */
-    action_t actionType;
-    int groupSize;     /* przykładowe pole z danymi; można zmienić nazwę na bardziej pasującą */
-	int priority;
+    int ts; //zegar
+    int src; //od kogo pakiet idzie
+    action_t actionType; //o co sie ubiegamy
+    int groupSize; //rozmiar grupy
+	int priority; //priorytet
 } packet_t;
 
-extern packet_t queue[4];
-extern packet_t endQueue[4];
+extern int endDetectionCounter; //wykrywamy tym koniec programu
+extern packet_t queue[4]; //kolejka gdy ubiegamy sie o sekcje krytyczną
 
 extern MPI_Datatype MPI_PAKIET_T;
 
 /* Typy wiadomości */
-#define FINISH 0
-#define REQ 1
-#define RES 2
-#define REL 3
+#define FINISH 0 //nie zaimplementowano
+#define REQ 1 //żądanie ubiegania się o zasób
+#define RES 2 //odpowiedź na żądanie
+#define REL 3 //zwolnienie zasobu
 
-/* macro debug - działa jak printf, kiedy zdefiniowano
-   DEBUG, kiedy DEBUG niezdefiniowane działa jak instrukcja pusta 
-   
-   używa się dokładnie jak printfa, tyle, że dodaje kolorków i automatycznie
-   wyświetla rank
+#define SEC_IN_STATE 2
 
-   w związku z tym, zmienna "rank" musi istnieć.
-
-   w printfie: definicja znaku specjalnego "%c[%d;%dm [%d]" escape[styl bold/normal;kolor [RANK]
-                                           FORMAT:argumenty doklejone z wywołania debug poprzez __VA_ARGS__
-					   "%c[%d;%dm"       wyczyszczenie atrybutów    27,0,37
-                                            UWAGA:
-                                                27 == kod ascii escape. 
-                                                Pierwsze %c[%d;%dm ( np 27[1;10m ) definiuje styl i kolor literek
-                                                Drugie   %c[%d;%dm czyli 27[0;37m przywraca domyślne kolory i brak pogrubienia (bolda)
-                                                ...  w definicji makra oznacza, że ma zmienną liczbę parametrów
-                                            
-*/
 #ifdef DEBUG
 #define debug(FORMAT,...) printf("%c[%d;%dm [%d | %d]: " FORMAT "%c[%d;%dm\n",  27, (1+(rank/7))%2, 31+(6+rank)%7, rank, clk, ##__VA_ARGS__, 27,0,37);
 #else
@@ -100,22 +66,24 @@ extern MPI_Datatype MPI_PAKIET_T;
 #define P_SET(X) printf("%c[%d;%dm",27,1,31+(6+X)%7);
 #define P_CLR printf("%c[%d;%dm",27,0,37);
 
-/* printf ale z kolorkami i automatycznym wyświetlaniem RANK. Patrz debug wyżej po szczegóły, jak działa ustawianie kolorków */
 #define println(FORMAT, ...) printf("%c[%d;%dm [%d]: " FORMAT "%c[%d;%dm\n",  27, (1+(rank/7))%2, 31+(6+rank)%7, rank, ##__VA_ARGS__, 27,0,37);
 
-/* wysyłanie pakietu, skrót: wskaźnik do pakietu (0 oznacza stwórz pusty pakiet), do kogo, z jakim typem */
 void sendPacket(packet_t *pkt, int destination, int tag);
 void setPriority();
-void removeFromQueue(packet_t rcvPacket);
-void changeState( state_t );
-void insertToQueue(packet_t rcvPacket);
-void insertToQueue2(packet_t rcvPacket);
-void insertToEndQueue(packet_t rcvPacket);
-void manageCriticalSection(int maxSize);
-void changeClock(int);
-void incrementClock(int destination);
-void insertInitialPackage();
-void insertFinishPackage();
+void removeFromQueue(packet_t rcvPacket); // gdy nie można wejść do sekcji, czekamy i odbieramy pakiety. metoda ta też sprawdza czy można wejśc do sekcji
+void changeState(state_t);
+void insertToQueueOnRes(packet_t rcvPacket); //do kolejki wstawia gdy odbierze się RES w wątku_kom -> w sumie to nie wiem czy to działa xD
+void insertToQueueOnReq(packet_t rcvPacket); //do kolejki wstawia gdy odbierze się REQ w wątku_kom -> w sumie to nie wiem czy to działa xD
+void insertToEndQueue(packet_t rcvPacket); //kolejka gdy chcemy zakończyć program
+void manageCriticalSection(); //zarządzanie sekcja krytyczną
+void changeClock(int); //zmiana zegara przy odbieraniu wiadomości
+void incrementClock(); //zmiana zegara przy wysyłaniu wiadomości
+void insertInitialPackage();	//gdy zaczynamy ubiegać się o zasób, to wstawiamy nasz pakiet do koejki. 
+								//jak wcześniej proces otrzymał REQ o takim samym typie to nie robimy tego, bo priorytet != 0 i nie możemy tego nadpisywać (chyba)
 void setActionState(action_t newState);
-char* getActionName(action_t action);
+char* getActionName(action_t action); //zwraca string na podstawie typu akcji, żeby w debugu ładnie było
+void displayArray(packet_t arr[4]);
+void sortArray(packet_t arr[4]);
+void incrementEndCounter();
+void detectEnd();
 #endif

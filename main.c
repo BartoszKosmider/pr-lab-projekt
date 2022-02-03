@@ -1,36 +1,30 @@
 #include "main.h"
 #include "watek_komunikacyjny.h"
 #include "watek_glowny.h"
-// #include "monitor.h"
-/* wątki */
 #include <pthread.h>
-
-/* sem_init sem_destroy sem_post sem_wait */
-//#include <semaphore.h>
-/* flagi dla open */
-//#include <fcntl.h>
 
 state_t stan=InRun;
 action_t actionType = GET_DESKS;
 volatile char end = FALSE;
-int size,rank, tallow ; /* nie trzeba zerować, bo zmienna globalna statyczna */
+int size, rank;
 int groupSize;
 int maxDesksCount;
 int maxRoomsCount;
 int maxFieldsCount;
 bool finishProcess = false;
 packet_t queue[4];
-packet_t endQueue[4];
 int clk = 0;
 int priority = 0;
+int counter = 1;
+int endDetectionCounter = 0;
 
 MPI_Datatype MPI_PAKIET_T;
-pthread_t threadKom, threadMon;
-
+pthread_t threadKom;
 pthread_mutex_t stateMut = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t tallowMut = PTHREAD_MUTEX_INITIALIZER;
-
-int counter = 1;
+pthread_mutex_t clkMut = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t actionMut = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queueMut = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t endClkMut = PTHREAD_MUTEX_INITIALIZER;
 
 char* getActionName(action_t action)
 {
@@ -45,8 +39,8 @@ char* getActionName(action_t action)
 		case GET_FIELD:
 			return "Zajmij pole";
 			break;
-		case EXIT:
-			return "Zakoncz";
+		case END:
+			return "Zakończ proces";
 			break;
 		default:
 			return "Nie zdefiniowano akcji";
@@ -78,20 +72,13 @@ void check_thread_support(int provided)
 	}
 }
 
-/* srprawdza, czy są wątki, tworzy typ MPI_PAKIET_T
-*/
 void inicjuj(int *argc, char ***argv)
 {
 	int provided;
 	MPI_Init_thread(argc, argv,MPI_THREAD_MULTIPLE, &provided);
 	check_thread_support(provided);
 
-	/* Stworzenie typu */
-	/* Poniższe (aż do MPI_Type_commit) potrzebne tylko, jeżeli
-	   brzydzimy się czymś w rodzaju MPI_Send(&typ, sizeof(pakiet_t), MPI_BYTE....
-	*/
-	/* sklejone z stackoverflow */
-	const int nitems=5; /* bo packet_t ma trzy pola */
+	const int nitems=5;
 	int blocklengths[5] = {1,1,1,1,1};
 	MPI_Datatype typy[5] = {MPI_INT, MPI_INT, MPI_INT, MPI_INT, MPI_INT};
 
@@ -110,9 +97,6 @@ void inicjuj(int *argc, char ***argv)
 	srand(rank);
 	
 	pthread_create(&threadKom, NULL, startKomWatek , 0);
-	// if (rank==0) {
-	// 	pthread_create( &threadMon, NULL, startMonitor, 0);
-	// }
 	debug("jestem");
 }
 
@@ -126,13 +110,14 @@ void finalizuj()
 	pthread_mutex_destroy( &stateMut);
 	/* Czekamy, aż wątek potomny się zakończy */
 	println("czekam na wątek \"komunikacyjny\"\n" );
-	pthread_join(threadKom,NULL);
-	if (rank==0) pthread_join(threadMon,NULL);
+	// pthread_join(threadKom, NULL);
+	int rc = pthread_cancel(threadKom); //recv blokuje i powstaje niemożność zakończenia wątku, nie wiem czy to poprawne rozwiązanie
+	if(rc) printf("failed to cancel the thread\n");
 	MPI_Type_free(&MPI_PAKIET_T);
 	MPI_Finalize();
 }
 
-void sortArray()
+void sortArray(packet_t arr[4])
 {
 	int i, j, min;
 	packet_t temp;
@@ -140,42 +125,42 @@ void sortArray()
 	{		
 		for(j = i + 1; j < size; j++)
 		{
-			if(queue[i].priority > queue[j].priority)
+			if(arr[i].priority > arr[j].priority)
 			{
-				temp  = queue[i];
-				queue[i] = queue[j];
-				queue[j] = temp;
+				temp  = arr[i];
+				arr[i] = arr[j];
+				arr[j] = temp;
 			}
-			else if(queue[i].priority == queue[j].priority)
+			else if(arr[i].priority == arr[j].priority)
 			{
-				if(queue[i].src > queue[j].src)
+				if(arr[i].src > arr[j].src)
 				{
-					temp  = queue[i];
-					queue[i] = queue[j];
-					queue[j] = temp;
+					temp  = arr[i];
+					arr[i] = arr[j];
+					arr[j] = temp;
 				}
 			}
 		}
 	}
 }
 
-void displayArray()
+void displayArray(packet_t arr[4])
 {
 	for(int i = 0; i < size; i++)
 		printf("i: %d, rank: %d ts: %d groupsize: %d  src: %d, priority: %d, actionType: %d\n", 
-			i, rank, queue[i].ts, queue[i].groupSize, queue[i].src, queue[i].priority, queue[i].actionType);
+			i, rank, arr[i].ts, arr[i].groupSize, arr[i].src, arr[i].priority, arr[i].actionType);
 }
 
 void setActionState(action_t newState)
 {
-	pthread_mutex_lock( &tallowMut );
+	pthread_mutex_lock( &actionMut );
 	if (stan==InFinish) 
 	{ 
-		pthread_mutex_unlock( &tallowMut );
+		pthread_mutex_unlock( &actionMut );
 		return;
 	}
 	actionType = newState;
-	pthread_mutex_unlock( &tallowMut );
+	pthread_mutex_unlock( &actionMut );
 }
 
 void removeFromQueue(packet_t rcvPacket)
@@ -185,29 +170,15 @@ void removeFromQueue(packet_t rcvPacket)
 		if(queue[i].src == rcvPacket.src)
 		{
 			queue[i].actionType = SKIP;
-			// printf("RANK: %d  !!   usunieto pakiet ID: %d\n", rank, rcvPacket.src);
-			manageCriticalSection(actionType); // gdy proces nie może wejsc do sekcji, czeka na odpowiedz i usuwa inne procesy z kolejki kalkulujac za każdym razem, czy może się wpierdolic
+			if(stan == InWait)
+				manageCriticalSection(); // gdy proces nie może wejsc do sekcji, czeka na odpowiedz i usuwa inne procesy z kolejki kalkulujac za każdym razem, czy może się wpierdolic
 			return;
 		}
 	}
 }
 
-void insertToEndQueue(packet_t rcvPacket)
-{
-	rcvPacket.actionType = END;
-	endQueue[rcvPacket.src] = rcvPacket;
-
-	for (int i = 0; i < size; i++)
-	{
-		printf("rank: %d, endqueue: %d, action1: %d, action2: %d\n", rank, endQueue[i].src, actionType, endQueue[i].actionType);
-		if(endQueue[i].actionType != END)
-			return;
-	}
-	changeState(InFinish);
-}
-
 // wstawia do kolejki odebrane wiadomosci jezeli stan tych jest taki sam jak nasz, gdy odbierze wszystkie sprawdza czy moze wejsc do sekcji
-void insertToQueue(packet_t rcvPacket)
+void insertToQueueOnRes(packet_t rcvPacket)
 {
 	if(rcvPacket.actionType != actionType)
 		rcvPacket.actionType = SKIP;
@@ -217,24 +188,20 @@ void insertToQueue(packet_t rcvPacket)
 
 	if(counter == size)
 	{
-		sortArray();
-		// displayArray();
 		changeState(InSection);
 		counter = 1;
 	}
 }
 
-void insertToQueue2(packet_t rcvPacket)
+void insertToQueueOnReq(packet_t rcvPacket)
 {
 	for (int i = 0; i < size; i++)
 	{
 		if(queue[i].src == rcvPacket.src)
 			queue[i] = rcvPacket;
 	}
-	// queue[rcvPacket.src] = rcvPacket;
 	if(priority == 0)
 	{
-		// printf("USTANOWIONO NOWY PAKIET INIT priority: %d, action: %d \n", priority, actionType);
 		priority = clk;
 		queue[rank].ts = clk;
 		queue[rank].src = rank;
@@ -247,75 +214,70 @@ void insertToQueue2(packet_t rcvPacket)
 void insertInitialPackage()
 {
 	if(queue[rank].priority != 0) return;
-	pthread_mutex_lock( &tallowMut );
+	pthread_mutex_lock( &queueMut );
 	priority = clk + 1;
 	queue[rank].ts = clk + 1;
 	queue[rank].src = rank;
 	queue[rank].groupSize = groupSize;
 	queue[rank].actionType = actionType;
 	queue[rank].priority = priority;
-	// printf("RANK: %d INSERT ON START, ts: %d, src: %d, gs: %d, at: %d, priority: %d\n", rank, clk + 1,queue[rank].src, groupSize, actionType, priority);
-	pthread_mutex_unlock( &tallowMut );
+	pthread_mutex_unlock( &queueMut );
 }
 
-void insertFinishPackage()
-{
-	pthread_mutex_lock( &tallowMut );
-	priority = clk + 1;
-	queue[rank].ts = clk + 1;
-	queue[rank].src = rank;
-	queue[rank].groupSize = groupSize;
-	queue[rank].actionType = END;
-	queue[rank].priority = priority;
-	// printf("RANK: %d INSERT ON START, ts: %d, src: %d, gs: %d, at: %d, priority: %d\n", rank, clk + 1,queue[rank].src, groupSize, actionType, priority);
-	pthread_mutex_unlock( &tallowMut );
-}
-
-/* opis patrz main.h */
+//podbija sie tutaj zegar i mapuje pakiet do wyslania
 void sendPacket(packet_t *pkt, int destination, int tag)
 {
-	int freepkt=0;
-	if (pkt==0) 
-	{ 
-		pkt = malloc(sizeof(packet_t)); 
-		freepkt=1;
-	}
 	incrementClock(destination);
 	pkt->ts = clk;
 	pkt->actionType = actionType;
 	pkt->groupSize = groupSize;
 	pkt->src = rank;
 	pkt->priority = priority;
-	// printf("RANK %d  WYSYLAM WIADOMOŚĆ!! DO: %d CLK %d priority: %d\n",rank, destination, clk, priority);
 	MPI_Send( pkt, 1, MPI_PAKIET_T, destination, tag, MPI_COMM_WORLD);
-	if (freepkt) free(pkt);
 }
 
-void changeClock( int newClock )
+void changeClock(int newClock)
 {
-	// if(rank == 1) printf("RANK: %d    |   CHANGE CLOCK OLD %d, RCV %d\n", rank, clk, newClock);
-	pthread_mutex_lock( &tallowMut );
+	pthread_mutex_lock( &clkMut );
 	if (stan==InFinish) 
-	{ 
-	pthread_mutex_unlock( &tallowMut );
+	{
+	pthread_mutex_unlock( &clkMut );
 		return;
 	}
 	if(clk >= newClock)
 		clk = clk + 1;
 	else
 		clk = newClock + 1;
-	pthread_mutex_unlock( &tallowMut );
+	pthread_mutex_unlock( &clkMut );
 }
 
-void incrementClock(int destination)
+void incrementClock()
 {
-	pthread_mutex_lock( &tallowMut );
+	pthread_mutex_lock( &clkMut );
 	if (stan==InFinish) { 
-	pthread_mutex_unlock( &tallowMut );
+	pthread_mutex_unlock( &clkMut );
 		return;
 	}
 	clk++;
-	pthread_mutex_unlock( &tallowMut );
+	pthread_mutex_unlock( &clkMut );
+}
+
+void incrementEndCounter()
+{
+	pthread_mutex_lock( &endClkMut );
+	if (stan==InFinish) 
+	{ 
+		pthread_mutex_unlock( &endClkMut );
+		return;
+	}
+	endDetectionCounter++;
+	pthread_mutex_unlock( &endClkMut );
+}
+
+void detectEnd()
+{
+	if(endDetectionCounter == size)
+		changeState(InFinish);
 }
 
 void changeState( state_t newState )
@@ -356,12 +318,9 @@ void readConfigFile()
 
 int main(int argc, char **argv)
 {
-	/* Tworzenie wątków, inicjalizacja itp */
 	readConfigFile();
-	inicjuj(&argc,&argv); // tworzy wątek komunikacyjny w "watek_komunikacyjny.c"
-	tallow = 1000; // by było wiadomo ile jest łoju
-	mainLoop();          // w pliku "watek_glowny.c"
-
+	inicjuj(&argc,&argv); 
+	mainLoop();
 	finalizuj();
 	return 0;
 }

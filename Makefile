@@ -13,4 +13,4 @@ clean:
 	rm main
 
 run: main
-	mpirun -default-hostfile none --oversubscribe -np 3 ./main
+	mpirun -default-hostfile none --oversubscribe -np 4 ./main
