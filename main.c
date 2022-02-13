@@ -12,7 +12,7 @@ int maxDesksCount;
 int maxRoomsCount;
 int maxFieldsCount;
 bool finishProcess = false;
-packet_t queue[4];
+packet_t queue[MAX_SIZE];
 int clk = 0;
 int priority = 0;
 int counter = 1;
@@ -50,7 +50,6 @@ char* getActionName(action_t action)
 
 void check_thread_support(int provided)
 {
-	printf("THREAD SUPPORT: chcemy %d. Co otrzymamy?\n", provided);
 	switch (provided) {
 		case MPI_THREAD_SINGLE: 
 			printf("Brak wsparcia dla wątków, kończę\n");
@@ -100,14 +99,14 @@ void inicjuj(int *argc, char ***argv)
 	debug("jestem");
 }
 
-void setPriority()
-{
-	priority = 0;
-}
-
 void finalizuj()
 {
 	pthread_mutex_destroy( &stateMut);
+	pthread_mutex_destroy( &clkMut);
+	pthread_mutex_destroy( &actionMut);
+	pthread_mutex_destroy( &queueMut);
+	pthread_mutex_destroy( &endClkMut);
+
 	/* Czekamy, aż wątek potomny się zakończy */
 	println("czekam na wątek \"komunikacyjny\"\n" );
 	// pthread_join(threadKom, NULL);
@@ -117,7 +116,7 @@ void finalizuj()
 	MPI_Finalize();
 }
 
-void sortArray(packet_t arr[4])
+void sortArray(packet_t arr[MAX_SIZE])
 {
 	int i, j, min;
 	packet_t temp;
@@ -144,7 +143,7 @@ void sortArray(packet_t arr[4])
 	}
 }
 
-void displayArray(packet_t arr[4])
+void displayArray(packet_t arr[MAX_SIZE])
 {
 	for(int i = 0; i < size; i++)
 		printf("i: %d, rank: %d ts: %d groupsize: %d  src: %d, priority: %d, actionType: %d\n", 
@@ -241,7 +240,7 @@ void changeClock(int newClock)
 	pthread_mutex_lock( &clkMut );
 	if (stan==InFinish) 
 	{
-	pthread_mutex_unlock( &clkMut );
+		pthread_mutex_unlock( &clkMut );
 		return;
 	}
 	if(clk >= newClock)
@@ -272,12 +271,6 @@ void incrementEndCounter()
 	}
 	endDetectionCounter++;
 	pthread_mutex_unlock( &endClkMut );
-}
-
-void detectEnd()
-{
-	if(endDetectionCounter == size)
-		changeState(InFinish);
 }
 
 void changeState( state_t newState )

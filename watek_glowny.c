@@ -1,7 +1,7 @@
 #include "main.h"
 #include "watek_glowny.h"
 
-bool canEnterCriticalSection(int maxCount, bool validateGroupSize, packet_t temp[4])
+bool canEnterCriticalSection(int maxCount, bool validateGroupSize, packet_t temp[MAX_SIZE])
 {
 	int sum = 0;
 	for(int i = 0; i < size; i++)
@@ -25,13 +25,13 @@ bool canEnterCriticalSection(int maxCount, bool validateGroupSize, packet_t temp
 		return false;
 }
 
-void enterCriticalSection(packet_t temp[4])
+void enterCriticalSection(packet_t temp[MAX_SIZE])
 {
 	packet_t *pkt = malloc(sizeof(packet_t));
 	pkt->actionType = actionType;
-	debug("Wchodzę do sekcji krytycznej. Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, groupSize);
+	debug("Wchodzę do sekcji krytycznej.        Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, groupSize);
 	sleep(5);
-	debug("Wychodzę z sekcji krytycznej. Typ: %s", getActionName(actionType));
+	debug("Wychodzę z sekcji krytycznej.        Typ: %s", getActionName(actionType));
 
 	for (int i = 0; i < size; i++)
 	{
@@ -49,7 +49,7 @@ void enterCriticalSection(packet_t temp[4])
 		}
 		if(temp[i].actionType == actionType && startSendingRel)
 		{
-			// debug("wysyłam zwolnienie zasobu do %d. akcja: %s, rozmiar: %d", temp[i].src, getActionName(actionType), groupSize);
+			debug("wysyłam zwolnienie zasobu do %d. akcja: %s, rozmiar: %d", temp[i].src, getActionName(actionType), groupSize);
 			sendPacket(pkt, temp[i].src, REL);
 		}
 	}
@@ -74,13 +74,13 @@ void enterCriticalSection(packet_t temp[4])
 
 	free(pkt);
 	memset(queue, 0, sizeof(queue));
-	setPriority();
+	priority = 0;
 	changeState(InRun);
 }
 
 void manageCriticalSection()
 {
-	packet_t temp[4];
+	packet_t temp[MAX_SIZE];
 	for (int i = 0; i < size; i++)
 	{
 		temp[i] = queue[i];
@@ -106,7 +106,7 @@ void manageCriticalSection()
 	}
 	else
 	{
-		debug("Nie mogę wejść do sekcji krytycznej. Typ: %s, Priorytet: %d", getActionName(actionType), priority);
+		debug("Nie mogę wejść do sekcji krytycznej. Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, groupSize);
 		changeState(InWait);
 	}
 }
@@ -115,7 +115,8 @@ void mainLoop()
 {
 	srandom(rank);
 	packet_t *pkt = malloc(sizeof(packet_t));
-	groupSize = random()%10 + 1;
+	srand(time(NULL) + rank);
+	groupSize = rand() % maxDesksCount + 1;
 	while (stan != InFinish)
 	{
 		if (stan==InRun) 
@@ -151,9 +152,9 @@ void mainLoop()
 			changeState(InWait);
 		}
 
-		if(stan == InWait)
+		if(stan == InWait && endDetectionCounter == size)
 		{
-			detectEnd();
+			changeState(InFinish);
 		}
 
 		sleep(SEC_IN_STATE);

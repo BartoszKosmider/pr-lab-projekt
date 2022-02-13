@@ -13,6 +13,7 @@
 
 #define TRUE 1
 #define FALSE 0
+#define MAX_SIZE 9999
 /* stany procesu */
 typedef enum {InRun, InSend, InFinish, InWait, InSection, InEnd} state_t;
 extern state_t stan;
@@ -38,7 +39,7 @@ typedef struct {
 } packet_t;
 
 extern int endDetectionCounter; //wykrywamy tym koniec programu
-extern packet_t queue[4]; //kolejka gdy ubiegamy sie o sekcje krytyczną
+extern packet_t queue[MAX_SIZE]; //kolejka gdy ubiegamy sie o sekcje krytyczną
 
 extern MPI_Datatype MPI_PAKIET_T;
 
@@ -69,7 +70,6 @@ extern MPI_Datatype MPI_PAKIET_T;
 #define println(FORMAT, ...) printf("%c[%d;%dm [%d]: " FORMAT "%c[%d;%dm\n",  27, (1+(rank/7))%2, 31+(6+rank)%7, rank, ##__VA_ARGS__, 27,0,37);
 
 void sendPacket(packet_t *pkt, int destination, int tag);
-void setPriority();
 void removeFromQueue(packet_t rcvPacket); // gdy nie można wejść do sekcji, czekamy i odbieramy pakiety. metoda ta też sprawdza czy można wejśc do sekcji
 void changeState(state_t);
 void insertToQueueOnRes(packet_t rcvPacket); //do kolejki wstawia gdy odbierze się RES w wątku_kom -> w sumie to nie wiem czy to działa xD
@@ -82,8 +82,6 @@ void insertInitialPackage();	//gdy zaczynamy ubiegać się o zasób, to wstawiam
 								//jak wcześniej proces otrzymał REQ o takim samym typie to nie robimy tego, bo priorytet != 0 i nie możemy tego nadpisywać (chyba)
 void setActionState(action_t newState);
 char* getActionName(action_t action); //zwraca string na podstawie typu akcji, żeby w debugu ładnie było
-void displayArray(packet_t arr[4]);
-void sortArray(packet_t arr[4]);
+void sortArray(packet_t arr[MAX_SIZE]);
 void incrementEndCounter();
-void detectEnd();
 #endif
