@@ -39,8 +39,8 @@ char* getActionName(action_t action)
 		case GET_FIELD:
 			return "Zajmij pole";
 			break;
-		case END:
-			return "Zakończ proces";
+		case GET_DESK_AFTER_FINISH:
+			return "Zajmij biurko po starcie rakiety";
 			break;
 		default:
 			return "Nie zdefiniowano akcji";
@@ -314,7 +314,7 @@ int main(int argc, char **argv)
 	readConfigFile();
 	inicjuj(&argc,&argv); 
 	mainLoop();
-	finalizuj();
+	// finalizuj();
 	return 0;
 }
 

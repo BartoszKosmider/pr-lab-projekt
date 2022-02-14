@@ -25,6 +25,30 @@ bool canEnterCriticalSection(int maxCount, bool validateGroupSize, packet_t temp
 		return false;
 }
 
+bool canGetDesks(int maxCount, packet_t temp[MAX_SIZE])
+{
+	int sum = 0;
+	for(int i = 0; i < size; i++)
+	{
+		if(temp[i].actionType == GET_DESKS || temp[i].actionType == GET_DESK_AFTER_FINISH)
+		{
+			if (temp[i].actionType == GET_DESK_AFTER_FINISH) {
+				sum += 1;
+			} else {
+				sum = sum + temp[i].groupSize;
+			}
+			if(rank == temp[i].src)
+			{
+				break;
+			}
+		}
+	}
+	if(sum <= maxCount) 
+		return true;
+	else
+		return false;
+}
+
 void enterCriticalSection(packet_t temp[MAX_SIZE])
 {
 	packet_t *pkt = malloc(sizeof(packet_t));
@@ -53,12 +77,6 @@ void enterCriticalSection(packet_t temp[MAX_SIZE])
 			sendPacket(pkt, temp[i].src, REL);
 		}
 	}
-	if(finishProcess)
-	{
-		debug("END DETECTED");
-		changeState(InEnd);
-		return;
-	}
 
 	if(actionType == GET_DESKS)
 		setActionState(GET_R00M);
@@ -66,10 +84,10 @@ void enterCriticalSection(packet_t temp[MAX_SIZE])
 		setActionState(GET_FIELD);
 	else if(actionType == GET_FIELD)
 	{
-		setActionState(GET_DESKS);
-		groupSize = 1;
-		incrementEndCounter();
+		setActionState(GET_DESK_AFTER_FINISH);
 		finishProcess = true;
+	} else if (actionType == GET_DESK_AFTER_FINISH) {
+		setActionState(GET_DESKS);
 	}
 
 	free(pkt);
@@ -90,7 +108,7 @@ void manageCriticalSection()
 	switch (actionType)
 	{
 		case GET_DESKS:
-			result = canEnterCriticalSection(maxDesksCount, true, temp);
+			result = canGetDesks(maxDesksCount, temp);
 			break;
 		case GET_R00M:
 			result = canEnterCriticalSection(maxRoomsCount, false, temp);
@@ -98,6 +116,8 @@ void manageCriticalSection()
 		case GET_FIELD:
 			result = canEnterCriticalSection(maxFieldsCount, false, temp);
 			break;
+		case GET_DESK_AFTER_FINISH:
+			result = canGetDesks(maxFieldsCount, temp);
 		default: break;
 	}
 	if(result)
@@ -137,24 +157,6 @@ void mainLoop()
 		if(stan == InSection)
 		{
 			manageCriticalSection();
-		}
-
-		if (stan==InEnd) 
-		{
-			for (int i = 0; i < size; i++)
-			{
-				if(rank == i)
-					continue;
-				setActionState(END);
-				// debug("wysyłam FINISH do %d. akcja: %s, rozmiar: %d", i, getActionName(actionType), groupSize);
-				sendPacket(pkt, i ,FINISH);
-			}
-			changeState(InWait);
-		}
-
-		if(stan == InWait && endDetectionCounter == size)
-		{
-			changeState(InFinish);
 		}
 
 		sleep(SEC_IN_STATE);

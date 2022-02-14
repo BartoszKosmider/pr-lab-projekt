@@ -18,7 +18,7 @@
 typedef enum {InRun, InSend, InFinish, InWait, InSection, InEnd} state_t;
 extern state_t stan;
 // typy akcji
-typedef enum { GET_DESKS, GET_R00M, GET_FIELD, SKIP, END } action_t;
+typedef enum { GET_DESKS, GET_R00M, GET_FIELD, SKIP, GET_DESK_AFTER_FINISH } action_t;
 extern action_t actionType;
 extern int rank; //id procesu
 extern int size; //liczba procesów
