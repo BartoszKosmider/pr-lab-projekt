@@ -15,10 +15,10 @@
 #define FALSE 0
 #define MAX_SIZE 9999
 /* stany procesu */
-typedef enum {InRun, InSend, InFinish, InWait, InSection, InEnd} state_t;
+typedef enum {InRun, InSend, InFinish, InWait, InSection } state_t;
 extern state_t stan;
 // typy akcji
-typedef enum { GET_DESKS, GET_R00M, GET_FIELD, SKIP, END } action_t;
+typedef enum { GET_DESKS, GET_R00M, GET_FIELD, SKIP } action_t;
 extern action_t actionType;
 extern int rank; //id procesu
 extern int size; //liczba procesów
@@ -38,9 +38,7 @@ typedef struct {
 	int priority; //priorytet
 } packet_t;
 
-extern int endDetectionCounter; //wykrywamy tym koniec programu
 extern packet_t queue[MAX_SIZE]; //kolejka gdy ubiegamy sie o sekcje krytyczną
-
 extern MPI_Datatype MPI_PAKIET_T;
 
 /* Typy wiadomości */
@@ -74,7 +72,6 @@ void removeFromQueue(packet_t rcvPacket); // gdy nie można wejść do sekcji, c
 void changeState(state_t);
 void insertToQueueOnRes(packet_t rcvPacket); //do kolejki wstawia gdy odbierze się RES w wątku_kom -> w sumie to nie wiem czy to działa xD
 void insertToQueueOnReq(packet_t rcvPacket); //do kolejki wstawia gdy odbierze się REQ w wątku_kom -> w sumie to nie wiem czy to działa xD
-void insertToEndQueue(packet_t rcvPacket); //kolejka gdy chcemy zakończyć program
 void manageCriticalSection(); //zarządzanie sekcja krytyczną
 void changeClock(int); //zmiana zegara przy odbieraniu wiadomości
 void incrementClock(); //zmiana zegara przy wysyłaniu wiadomości
@@ -83,5 +80,4 @@ void insertInitialPackage();	//gdy zaczynamy ubiegać się o zasób, to wstawiam
 void setActionState(action_t newState);
 char* getActionName(action_t action); //zwraca string na podstawie typu akcji, żeby w debugu ładnie było
 void sortArray(packet_t arr[MAX_SIZE]);
-void incrementEndCounter();
 #endif

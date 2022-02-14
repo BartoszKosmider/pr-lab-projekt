@@ -25,11 +25,19 @@ bool canEnterCriticalSection(int maxCount, bool validateGroupSize, packet_t temp
 		return false;
 }
 
+int displayGroupSize(packet_t arr[MAX_SIZE])
+{
+	for(int i = 0; i < size; i++)
+		if(rank == arr[i].src)
+			return arr[i].groupSize;
+}
+
 void enterCriticalSection(packet_t temp[MAX_SIZE])
 {
 	packet_t *pkt = malloc(sizeof(packet_t));
 	pkt->actionType = actionType;
-	debug("Wchodzę do sekcji krytycznej.        Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, groupSize);
+
+	debug("Wchodzę do sekcji krytycznej.        Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, displayGroupSize(temp));
 	sleep(5);
 	debug("Wychodzę z sekcji krytycznej.        Typ: %s", getActionName(actionType));
 
@@ -49,27 +57,23 @@ void enterCriticalSection(packet_t temp[MAX_SIZE])
 		}
 		if(temp[i].actionType == actionType && startSendingRel)
 		{
-			debug("wysyłam zwolnienie zasobu do %d. akcja: %s, rozmiar: %d", temp[i].src, getActionName(actionType), groupSize);
+			// debug("wysyłam zwolnienie zasobu do %d. akcja: %s, rozmiar: %d", temp[i].src, getActionName(actionType), displayGroupSize(temp));
 			sendPacket(pkt, temp[i].src, REL);
 		}
 	}
-	if(finishProcess)
-	{
-		debug("END DETECTED");
-		changeState(InEnd);
-		return;
-	}
 
-	if(actionType == GET_DESKS)
+	if(actionType == GET_DESKS && finishProcess)
+	{
+		finishProcess = false;
+	}
+	else if(actionType == GET_DESKS && !finishProcess)
 		setActionState(GET_R00M);
 	else if(actionType == GET_R00M)
 		setActionState(GET_FIELD);
 	else if(actionType == GET_FIELD)
 	{
-		setActionState(GET_DESKS);
-		groupSize = 1;
-		incrementEndCounter();
 		finishProcess = true;
+		setActionState(GET_DESKS);
 	}
 
 	free(pkt);
@@ -106,7 +110,7 @@ void manageCriticalSection()
 	}
 	else
 	{
-		debug("Nie mogę wejść do sekcji krytycznej. Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, groupSize);
+		debug("Nie mogę wejść do sekcji krytycznej. Typ: %s, Priorytet: %d, Rozmiar: %d", getActionName(actionType), priority, displayGroupSize(temp));
 		changeState(InWait);
 	}
 }
@@ -137,24 +141,6 @@ void mainLoop()
 		if(stan == InSection)
 		{
 			manageCriticalSection();
-		}
-
-		if (stan==InEnd) 
-		{
-			for (int i = 0; i < size; i++)
-			{
-				if(rank == i)
-					continue;
-				setActionState(END);
-				// debug("wysyłam FINISH do %d. akcja: %s, rozmiar: %d", i, getActionName(actionType), groupSize);
-				sendPacket(pkt, i ,FINISH);
-			}
-			changeState(InWait);
-		}
-
-		if(stan == InWait && endDetectionCounter == size)
-		{
-			changeState(InFinish);
 		}
 
 		sleep(SEC_IN_STATE);

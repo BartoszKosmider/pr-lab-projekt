@@ -16,7 +16,6 @@ packet_t queue[MAX_SIZE];
 int clk = 0;
 int priority = 0;
 int counter = 1;
-int endDetectionCounter = 0;
 
 MPI_Datatype MPI_PAKIET_T;
 pthread_t threadKom;
@@ -24,7 +23,6 @@ pthread_mutex_t stateMut = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t clkMut = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t actionMut = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t queueMut = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t endClkMut = PTHREAD_MUTEX_INITIALIZER;
 
 char* getActionName(action_t action)
 {
@@ -38,9 +36,6 @@ char* getActionName(action_t action)
 			break;	
 		case GET_FIELD:
 			return "Zajmij pole";
-			break;
-		case END:
-			return "Zakończ proces";
 			break;
 		default:
 			return "Nie zdefiniowano akcji";
@@ -105,7 +100,6 @@ void finalizuj()
 	pthread_mutex_destroy( &clkMut);
 	pthread_mutex_destroy( &actionMut);
 	pthread_mutex_destroy( &queueMut);
-	pthread_mutex_destroy( &endClkMut);
 
 	/* Czekamy, aż wątek potomny się zakończy */
 	println("czekam na wątek \"komunikacyjny\"\n" );
@@ -141,13 +135,6 @@ void sortArray(packet_t arr[MAX_SIZE])
 			}
 		}
 	}
-}
-
-void displayArray(packet_t arr[MAX_SIZE])
-{
-	for(int i = 0; i < size; i++)
-		printf("i: %d, rank: %d ts: %d groupsize: %d  src: %d, priority: %d, actionType: %d\n", 
-			i, rank, arr[i].ts, arr[i].groupSize, arr[i].src, arr[i].priority, arr[i].actionType);
 }
 
 void setActionState(action_t newState)
@@ -204,7 +191,10 @@ void insertToQueueOnReq(packet_t rcvPacket)
 		priority = clk;
 		queue[rank].ts = clk;
 		queue[rank].src = rank;
-		queue[rank].groupSize = groupSize;
+		if(finishProcess)
+			queue[rank].groupSize = 1;
+		else
+			queue[rank].groupSize = groupSize;
 		queue[rank].actionType = actionType;
 		queue[rank].priority = priority;
 	}
@@ -217,7 +207,10 @@ void insertInitialPackage()
 	priority = clk + 1;
 	queue[rank].ts = clk + 1;
 	queue[rank].src = rank;
-	queue[rank].groupSize = groupSize;
+	if(finishProcess)
+		queue[rank].groupSize = 1;
+	else
+		queue[rank].groupSize = groupSize;
 	queue[rank].actionType = actionType;
 	queue[rank].priority = priority;
 	pthread_mutex_unlock( &queueMut );
@@ -226,12 +219,16 @@ void insertInitialPackage()
 //podbija sie tutaj zegar i mapuje pakiet do wyslania
 void sendPacket(packet_t *pkt, int destination, int tag)
 {
-	incrementClock(destination);
+	incrementClock();
 	pkt->ts = clk;
 	pkt->actionType = actionType;
-	pkt->groupSize = groupSize;
+	if(finishProcess)
+		pkt->groupSize = 1;
+	else
+		pkt->groupSize = groupSize;
 	pkt->src = rank;
 	pkt->priority = priority;
+	// debug("wysyłam pakiet do %d. akcja: %s, rozmiar: %d, tag: %d", destination, getActionName(pkt->actionType), pkt->groupSize, tag);
 	MPI_Send( pkt, 1, MPI_PAKIET_T, destination, tag, MPI_COMM_WORLD);
 }
 
@@ -259,18 +256,6 @@ void incrementClock()
 	}
 	clk++;
 	pthread_mutex_unlock( &clkMut );
-}
-
-void incrementEndCounter()
-{
-	pthread_mutex_lock( &endClkMut );
-	if (stan==InFinish) 
-	{ 
-		pthread_mutex_unlock( &endClkMut );
-		return;
-	}
-	endDetectionCounter++;
-	pthread_mutex_unlock( &endClkMut );
 }
 
 void changeState( state_t newState )
@@ -301,7 +286,7 @@ void readConfigFile()
 		{
 			maxRoomsCount = atoi(temp);
 		}
-		if(sscanf(buf, "FIELDS	%S", temp) == 1)
+		if(sscanf(buf, "FIELDS	%s", temp) == 1)
 		{
 			maxFieldsCount = atoi(temp);
 		}
@@ -314,7 +299,7 @@ int main(int argc, char **argv)
 	readConfigFile();
 	inicjuj(&argc,&argv); 
 	mainLoop();
-	finalizuj();
+	// finalizuj();
 	return 0;
 }
 

@@ -16,12 +16,6 @@ void *startKomWatek(void *ptr)
 		changeClock(pakiet.ts);
 		switch ( status.MPI_TAG ) 
 		{
-			case FINISH:
-				// debug("odbieram odpowiedź FINISH od %d. rozmiar: %d, akcja: %s, clk: %d", 
-					// pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
-
-				incrementEndCounter();
-				break;
 			case RES:
 				// debug("odbieram odpowiedź od %d. rozmiar: %d, akcja: %s, clk: %d", 
 					// pakiet.src, pakiet.groupSize, getActionName(pakiet.actionType), pakiet.ts);
